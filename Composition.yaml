@@ -1,0 +1,194 @@
+# This Composition creates an RDS instance with MariaDB engine and
+# connects it securely to the EKS cluster network.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: aws.xsqlsrvs.db.platformref.crossplane.io
+  labels:
+    cloud: aws
+spec:
+  compositeTypeRef:
+    apiVersion: db.platformref.crossplane.io/v1alpha1
+    kind: XSQLSrv
+  resources:
+    - base:
+        apiVersion: rds.aws.jet.crossplane.io/v1alpha1
+        kind: SubnetGroup
+        spec:
+          forProvider:
+            region: us-west-2
+            description: An excellent formation of subnetworks.
+          deletionPolicy: Delete
+      patches:
+        - fromFieldPath: spec.parameters.clusterRef.id
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-db-sn-grp"
+        - fromFieldPath: spec.parameters.clusterRef.id
+          toFieldPath: metadata.annotations[crossplane.io/external-name]
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-db-sn-grp"
+        - fromFieldPath: "spec.parameters.clusterRef.id"
+          toFieldPath: spec.forProvider.subnetIdSelector.matchLabels[networks.aws.platformref.crossplane.io/network-id]
+    - base:
+        apiVersion: rds.aws.jet.crossplane.io/v1alpha2
+        kind: Instance
+        spec:
+          forProvider:
+            region: us-west-2
+            dbSubnetGroupNameSelector:
+              matchControllerRef: true
+            instanceClass: db.t2.small
+            username: admin
+            engine: mariadb
+            engineVersion: "10.3"
+            skipFinalSnapshotBeforeDeletion: true
+            publiclyAccessible: false
+          deletionPolicy: Delete
+      connectionDetails:
+        - fromConnectionSecretKey: username
+        - fromConnectionSecretKey: password
+        - fromConnectionSecretKey: endpoint
+        - fromConnectionSecretKey: port
+      patches:
+        - fromFieldPath: spec.parameters.clusterRef.id
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-db-srv"
+        - fromFieldPath: spec.parameters.clusterRef.id
+          toFieldPath: metadata.annotations[crossplane.io/external-name]
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-db-srv"
+        - fromFieldPath: spec.parameters.clusterRef.id
+          toFieldPath: "spec.writeConnectionSecretToRef.name"
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-db-srv"
+        - fromFieldPath: spec.claimRef.namespace
+          toFieldPath: spec.writeConnectionSecretToRef.namespace
+        - fromFieldPath: "spec.parameters.storageGB"
+          toFieldPath: "spec.forProvider.allocatedStorage"
+          transforms:
+          - type: math
+            math:
+              multiply: 1024
+        - fromFieldPath: "spec.parameters.clusterRef.id"
+          toFieldPath: spec.forProvider.vpcSecurityGroupIdSelector.matchLabels[networks.aws.platformref.crossplane.io/network-id]
+    # Create secret in target cluster from DB connection details in crossplane cluster.
+    # This is used for a Kubernetes Job that runs and creates a database in RDS instance.
+    # AWS does not expose an api to create multiple databases per RDS instance, so this
+    # is a workaround. We run the job in the target cluster so we don't need to open
+    # a firewall rule to the Crossplane cluster.
+    - base:
+        apiVersion: kubernetes.crossplane.io/v1alpha1
+        kind: Object
+        spec:
+          references:
+          # Use dependsOn to wait for the DB connection secret to exist
+          - dependsOn:
+              apiVersion: v1
+              kind: Secret
+              name: # patched
+              namespace: # patched
+          # Patch the secret manifest from the DB connection secret
+          - patchesFrom:
+              apiVersion: v1
+              kind: Secret
+              name: # patched
+              namespace: # patched
+              fieldPath: data.username
+            toFieldPath: data.username
+          - patchesFrom:
+              apiVersion: v1
+              kind: Secret
+              name: # patched
+              namespace: # patched
+              fieldPath: data.password
+            toFieldPath: data.password
+          - patchesFrom:
+              apiVersion: v1
+              kind: Secret
+              name: # patched
+              namespace: # patched
+              fieldPath: data.endpoint
+            toFieldPath: data.endpoint
+          - patchesFrom:
+              apiVersion: v1
+              kind: Secret
+              name: # patched
+              namespace: # patched
+              fieldPath: data.port
+            toFieldPath: data.port
+          # Create the secret from patched values.
+          forProvider:
+            manifest:
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                namespace: upbound-system
+          providerConfigRef:
+            name: # patched
+      patches:
+        - fromFieldPath: "spec.parameters.clusterRef.id"
+          toFieldPath: "metadata.name"
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-db-srv"
+        - fromFieldPath: "spec.parameters.clusterRef.id"
+          toFieldPath: "metadata.annotations[crossplane.io/external-name]"
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-db-srv"
+        - fromFieldPath: "spec.parameters.clusterRef.id"
+          toFieldPath: "spec.references[0].dependsOn.name"
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-db-srv"
+        - fromFieldPath: "spec.claimRef.namespace"
+          toFieldPath: "spec.references[0].dependsOn.namespace"
+        - fromFieldPath: "spec.parameters.clusterRef.id"
+          toFieldPath: "spec.references[1].patchesFrom.name"
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-db-srv"
+        - fromFieldPath: "spec.claimRef.namespace"
+          toFieldPath: "spec.references[1].patchesFrom.namespace"
+        - fromFieldPath: "spec.parameters.clusterRef.id"
+          toFieldPath: "spec.references[2].patchesFrom.name"
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-db-srv"
+        - fromFieldPath: "spec.claimRef.namespace"
+          toFieldPath: "spec.references[2].patchesFrom.namespace"
+        - fromFieldPath: "spec.parameters.clusterRef.id"
+          toFieldPath: "spec.references[3].patchesFrom.name"
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-db-srv"
+        - fromFieldPath: "spec.claimRef.namespace"
+          toFieldPath: "spec.references[3].patchesFrom.namespace"
+        - fromFieldPath: "spec.parameters.clusterRef.id"
+          toFieldPath: "spec.references[4].patchesFrom.name"
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-db-srv"
+        - fromFieldPath: "spec.claimRef.namespace"
+          toFieldPath: "spec.references[4].patchesFrom.namespace"
+        - fromFieldPath: "spec.parameters.clusterRef.id"
+          toFieldPath: "spec.providerConfigRef.name"
