@@ -100,6 +100,8 @@ spec:
               name: # patched
               namespace: # patched
           # Patch the secret manifest from the DB connection secret
+          # This example patches specific fileds from source secret to propagated seceret.
+          # You can patch the entire secret with one patch via the method here: https://github.com/turkenh/managed-control-planes/blob/70bcd05ec58ef1ed046de9e15433ff8e80a33b79/cluster/xpkgs/mcp-host-cluster/host-cluster-services/core/composition.yaml#L46-L47
           - patchesFrom:
               apiVersion: v1
               kind: Secret
