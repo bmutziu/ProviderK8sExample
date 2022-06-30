@@ -1,0 +1,13 @@
+apiVersion: devopstoolkitseries.com/v1alpha1
+kind: SQLClaim
+metadata:
+  name: a-team-rds
+spec:
+  id: a-team-rds
+  compositionSelector:
+    matchLabels:
+      provider: aws
+      db: postgresql
+  parameters:
+    version: "14.1"
+    size: small

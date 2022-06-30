@@ -1,0 +1,79 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: aws-postgresql-no-managed
+  labels:
+    provider: aws
+    db: postgresql
+spec:
+  writeConnectionSecretsToNamespace: crossplane-system
+  compositeTypeRef:
+    apiVersion: devopstoolkitseries.com/v1alpha1
+    kind: SQL
+  patchSets:
+  - name: metadata
+    patches:
+    - fromFieldPath: metadata.labels
+  resources:
+  - name: dbsubnetgroup
+    base:
+      apiVersion: database.aws.crossplane.io/v1beta1
+      kind: DBSubnetGroup
+      spec:
+        forProvider:
+          region: us-east-1
+          description: I'm too lazy to write a good description
+          subnetIdSelector:
+            matchLabels:
+              access: public
+    patches:
+    - fromFieldPath: spec.id
+      toFieldPath: metadata.labels[devopstoolkitseries.com/app]  
+    - fromFieldPath: spec.id
+      toFieldPath: metadata.name
+  - name: rdsinstance
+    base:
+      apiVersion: database.aws.crossplane.io/v1beta1
+      kind: RDSInstance
+      spec:
+        forProvider:
+          region: us-east-1
+          dbSubnetGroupNameSelector:
+            matchLabels:
+              devopstoolkitseries.com/app: a-team-rds
+          vpcSecurityGroupIDSelector:
+            matchLabels:
+              devopstoolkitseries.com/app: a-team-eks
+          dbInstanceClass: db.m5.large
+          masterUsername: masteruser
+          engine: postgres
+          engineVersion: "14.1"
+          skipFinalSnapshotBeforeDeletion: true
+          publiclyAccessible: true
+          allocatedStorage: 200
+        writeConnectionSecretToRef:
+          namespace: crossplane-system
+    patches:
+    - fromFieldPath: spec.id
+      toFieldPath: metadata.name
+    - fromFieldPath: metadata.uid
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+        - type: string
+          string:
+            fmt: "%s-sql"
+    - fromFieldPath: spec.parameters.size
+      toFieldPath: spec.forProvider.dbInstanceClass
+      transforms:
+      - type: map
+        map:
+          small: db.m5.large
+          medium: db.m5.2xlarge
+          large: db.m5.8xlarge
+    - fromFieldPath: spec.parameters.version
+      toFieldPath: spec.forProvider.engineVersion
+    connectionDetails:
+    - fromConnectionSecretKey: username
+    - fromConnectionSecretKey: password
+    - fromConnectionSecretKey: endpoint
+    - fromConnectionSecretKey: port
