@@ -6,7 +6,6 @@ metadata:
     provider: aws
     db: postgresql
 spec:
-  writeConnectionSecretsToNamespace: crossplane-system
   compositeTypeRef:
     apiVersion: devopstoolkitseries.com/v1alpha1
     kind: SQL
@@ -51,17 +50,17 @@ spec:
           skipFinalSnapshotBeforeDeletion: true
           publiclyAccessible: true
           allocatedStorage: 200
-        writeConnectionSecretToRef:
-          namespace: crossplane-system
     patches:
     - fromFieldPath: spec.id
       toFieldPath: metadata.name
-    - fromFieldPath: metadata.uid
+    - fromFieldPath: spec.id
       toFieldPath: spec.writeConnectionSecretToRef.name
       transforms:
         - type: string
           string:
             fmt: "%s-sql"
+    - fromFieldPath: spec.claimRef.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
     - fromFieldPath: spec.parameters.size
       toFieldPath: spec.forProvider.dbInstanceClass
       transforms:
@@ -77,3 +76,115 @@ spec:
     - fromConnectionSecretKey: password
     - fromConnectionSecretKey: endpoint
     - fromConnectionSecretKey: port
+  # Create secret in target cluster from DB connection details in crossplane cluster.
+  # This is used for a Kubernetes Job that runs and creates a database in RDS instance.
+  # AWS does not expose an api to create multiple databases per RDS instance, so this
+  # is a workaround. We run the job in the target cluster so we don't need to open
+  # a firewall rule to the Crossplane cluster.
+  - name: secretobject
+    base:
+      apiVersion: kubernetes.crossplane.io/v1alpha1
+      kind: Object
+      spec:
+        references:
+        # Use dependsOn to wait for the DB connection secret to exist
+        - dependsOn:
+            apiVersion: v1
+            kind: Secret
+            name: # patched
+            namespace: # patched
+        # Patch the secret manifest from the DB connection secret
+        # This example patches specific fields from source secret to propagated seceret.
+        # You can patch the entire secret with one patch via a general 'data' to 'data' statement.
+        - patchesFrom:
+            apiVersion: v1
+            kind: Secret
+            name: # patched
+            namespace: # patched
+            fieldPath: data.username
+          toFieldPath: data.username
+        - patchesFrom:
+            apiVersion: v1
+            kind: Secret
+            name: # patched
+            namespace: # patched
+            fieldPath: data.password
+          toFieldPath: data.password
+        - patchesFrom:
+            apiVersion: v1
+            kind: Secret
+            name: # patched
+            namespace: # patched
+            fieldPath: data.endpoint
+          toFieldPath: data.endpoint
+        - patchesFrom:
+            apiVersion: v1
+            kind: Secret
+            name: # patched
+            namespace: # patched
+            fieldPath: data.port
+          toFieldPath: data.port
+        # Create the secret from patched values.
+        forProvider:
+          manifest:
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              namespace: crossplane-system
+        providerConfigRef:
+          name: # patched
+    patches:
+      - fromFieldPath: "spec.id"
+        toFieldPath: "metadata.name"
+        transforms:
+        - type: string
+          string:
+            fmt: "%s-sql"
+      - fromFieldPath: "spec.id"
+        toFieldPath: "metadata.annotations[crossplane.io/external-name]"
+        transforms:
+        - type: string
+          string:
+            fmt: "%s-sql"
+      - fromFieldPath: "spec.id"
+        toFieldPath: "spec.references[0].dependsOn.name"
+        transforms:
+        - type: string
+          string:
+            fmt: "%s-sql"
+      - fromFieldPath: "spec.claimRef.namespace"
+        toFieldPath: "spec.references[0].dependsOn.namespace"
+      - fromFieldPath: "spec.id"
+        toFieldPath: "spec.references[1].patchesFrom.name"
+        transforms:
+        - type: string
+          string:
+            fmt: "%s-sql"
+      - fromFieldPath: "spec.claimRef.namespace"
+        toFieldPath: "spec.references[1].patchesFrom.namespace"
+      - fromFieldPath: "spec.id"
+        toFieldPath: "spec.references[2].patchesFrom.name"
+        transforms:
+        - type: string
+          string:
+            fmt: "%s-sql"
+      - fromFieldPath: "spec.claimRef.namespace"
+        toFieldPath: "spec.references[2].patchesFrom.namespace"
+      - fromFieldPath: "spec.id"
+        toFieldPath: "spec.references[3].patchesFrom.name"
+        transforms:
+        - type: string
+          string:
+            fmt: "%s-sql"
+      - fromFieldPath: "spec.claimRef.namespace"
+        toFieldPath: "spec.references[3].patchesFrom.namespace"
+      - fromFieldPath: "spec.id"
+        toFieldPath: "spec.references[4].patchesFrom.name"
+        transforms:
+        - type: string
+          string:
+            fmt: "%s-sql"
+      - fromFieldPath: "spec.claimRef.namespace"
+        toFieldPath: "spec.references[4].patchesFrom.namespace"
+      - fromFieldPath: "spec.parameters.clusterRef.id"
+        toFieldPath: "spec.providerConfigRef.name"

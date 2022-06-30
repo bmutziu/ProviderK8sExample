@@ -45,6 +45,15 @@ spec:
                     description: "Used only for DBs running in Kubernetes clusters"
                     type: string
                     default: default
+                  clusterRef:
+                    description: "A reference to the Cluster object that this rds should be connected to"
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        description: ID of the Cluster object this ref points to
+                    required:
+                    - id
                 required:
                 - version
             required:

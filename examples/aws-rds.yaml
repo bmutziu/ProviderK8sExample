@@ -11,3 +11,5 @@ spec:
   parameters:
     version: "14.1"
     size: small
+    clusterRef:
+      id: a-team-eks
