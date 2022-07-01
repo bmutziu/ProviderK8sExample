@@ -1,0 +1,15 @@
+apiVersion: devopstoolkitseries.com/v1alpha1
+kind: SQLiClaim
+metadata:
+  name: a-team-rdsi
+spec:
+  id: a-team-rdsi
+  compositionSelector:
+    matchLabels:
+      provider: aws
+      db: postgresql
+  parameters:
+    rdsRef:
+      id: a-team-rds
+    clusterRef:
+      id: a-team-eks

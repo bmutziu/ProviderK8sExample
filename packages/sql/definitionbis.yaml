@@ -1,0 +1,55 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: sqlsi.devopstoolkitseries.com
+spec:
+  defaultCompositionRef:
+    name: google-postgresqli
+  group: devopstoolkitseries.com
+  names:
+    kind: SQLI
+    plural: sqlsi
+  claimNames:
+    kind: SQLiClaim
+    plural: sqliclaims
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Database Instance ID
+              parameters:
+                type: object
+                properties:
+                  rdsRef:
+                    description: "A reference to the RDS object that this instance should be connected to"
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        description: ID of the Cluster object this ref points to
+                    required:
+                    - id
+                  clusterRef:
+                    description: "A reference to the Cluster object that this rds should be connected to"
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        description: ID of the Cluster object this ref points to
+                    required:
+                    - id    
+                required:
+                - rdsRef
+                - clusterRef  
+            required:
+            - id
+            - parameters

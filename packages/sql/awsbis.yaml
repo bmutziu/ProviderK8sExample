@@ -1,0 +1,137 @@
+# AWS does not offer a cloud api to create databases on existing RDS intances, 
+# and we can not use provider-sql because we are not opening a firewall rule 
+# to access the RDS instance from our Crossplane cluster. We use 
+# provider-kubernetes in this Composition to create the database via a 
+# Kubernetes Job running in the target cluster. When we provisioned the EKS 
+# cluster, we used provider-kuberrnetes to create a namespace called 
+# crossplane-system. We also used provider-kubernetes in the database Composition 
+# to copy the database server connection secret to it. 
+#
+# The job mounts that secret and uses psql cli to create the database based 
+# on the name we provided in the wordpress Claim. 
+#
+# We could alternatively use provider-aws to run a Lambda function for this 
+# step.
+#
+# See provider-kubernetes reference at 
+# https://doc.crds.dev/github.com/crossplane-contrib/provider-kubernetes
+#
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: aws-postgresql-no-managedi
+  labels:
+    provider: aws
+    db: postgresql
+spec:
+  compositeTypeRef:
+    apiVersion: devopstoolkitseries.com/v1alpha1
+    kind: SQLI
+  resources:
+    # Create external database for Wordpress to use. This requires the DB 
+    # server to be available. The DB server is provisioned via the database 
+    # claim.
+    - base:
+        apiVersion: kubernetes.crossplane.io/v1alpha1
+        kind: Object
+        spec:
+          # This provider is pointed to a config created when the cluster is provisioned.
+          # See the EKS Composition for its definition.
+          providerConfigRef:
+            name: # patched
+          forProvider:
+            manifest:
+              apiVersion: batch/v1
+              kind: Job
+              metadata:
+                name: # patched
+                namespace: crossplane-system
+              spec:
+                template:
+                  spec:
+                    containers:
+                    - name: psql
+                      image: alpine:3.16 # (Would be better to use custom image with psql-client)
+                      env:
+                        - name: USERNAME
+                          valueFrom:
+                            secretKeyRef:
+                              name: platform-ref-aws-db-srv # patched
+                              key: username
+                              optional: false
+                        - name: PASSWORD
+                          valueFrom:
+                            secretKeyRef:
+                              name: platform-ref-aws-db-srv # patched
+                              key: password
+                              optional: false
+                        - name: ENDPOINT
+                          valueFrom:
+                            secretKeyRef:
+                              name: platform-ref-aws-db-srv # patched
+                              key: endpoint
+                              optional: false
+                        - name: PORT
+                          valueFrom:
+                            secretKeyRef:
+                              name: platform-ref-aws-db-srv # patched
+                              key: port
+                              optional: true
+                      command: 
+                        - "sh"
+                        - "-c"
+                        - | # patched
+                          apk add --no-cache mysql-client
+                          mysql -h $ENDPOINT -u $USERNAME -p$PASSWORD -e "CREATE DATABASE $DB_NAME";
+                    restartPolicy: Never
+      patches:
+        - fromFieldPath: metadata.uid
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-rdsi-wp"
+        - fromFieldPath: spec.parameters.clusterRef.id
+          toFieldPath: spec.providerConfigRef.name
+        - fromFieldPath: spec.id
+          toFieldPath: metadata.annotations[crossplane.io/external-name]
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-rdsi-wp"
+        - fromFieldPath: metadata.uid
+          toFieldPath: spec.forProvider.manifest.metadata.name
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-rdsi-wp"
+        - fromFieldPath: spec.parameters.rdsRef.id
+          toFieldPath: spec.forProvider.manifest.spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef.name
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-sql"
+        - fromFieldPath: spec.parameters.rdsRef.id
+          toFieldPath: spec.forProvider.manifest.spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.name
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-sql"
+        - fromFieldPath: spec.parameters.rdsRef.id
+          toFieldPath: spec.forProvider.manifest.spec.template.spec.containers[0].env[2].valueFrom.secretKeyRef.name
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-sql"
+        - fromFieldPath: spec.parameters.rdsRef.id
+          toFieldPath: spec.forProvider.manifest.spec.template.spec.containers[0].env[3].valueFrom.secretKeyRef.name
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-sql"
+        - fromFieldPath: spec.id
+          toFieldPath: spec.forProvider.manifest.spec.template.spec.containers[0].command[2]
+          transforms:
+            - type: string
+              string:
+                fmt: apk add --update postgresql-client && PGPASSWORD=$PASSWORD createdb -h $ENDPOINT -U $USERNAME -p $PORT %s
